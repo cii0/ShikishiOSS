@@ -1,0 +1,311 @@
+// Copyright 2021 Cii
+//
+// This file is part of Shikishi.
+//
+// Shikishi is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Shikishi is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Shikishi.  If not, see <http://www.gnu.org/licenses/>.
+
+syntax = "proto3";
+
+// $ cd [directory]
+// $ protoc --swift_out=. Protobuf.proto
+
+message PBPoint {
+    double x = 1;
+    double y = 2;
+}
+message PBIntPoint {
+    int64 x = 1;
+    int64 y = 2;
+}
+message PBSize {
+    double width = 1;
+    double height = 2;
+}
+message PBRect {
+    PBPoint origin = 1;
+    PBSize size = 2;
+}
+
+message PBAttitude {
+    PBPoint position = 1;
+    PBSize scale = 2;
+    double rotation = 3;
+}
+
+enum PBRGBColorSpace {
+    sRGB = 0;
+}
+message PBLCHA {
+    double l = 1;
+    double c = 2;
+    double h = 3;
+    double a = 4;
+}
+message PBRGBA {
+    float r = 1;
+    float g = 2;
+    float b = 3;
+    float a = 4;
+}
+message PBColor {
+    PBLCHA lcha = 1;
+    PBRGBA rgba = 2;
+    PBRGBColorSpace rgbColorSpace = 3;
+}
+
+message PBUUID {
+    string value = 1;
+}
+message PBUUColor {
+    PBColor value = 1;
+    PBUUID id = 2;
+}
+
+message PBLine {
+    message PBControl {
+        PBPoint point = 1;
+        double weight = 2;
+        double pressure = 3;
+    }
+    repeated PBControl controls = 1;
+    double size = 2;
+}
+
+message PBPolygon {
+    repeated PBPoint points = 1;
+}
+message PBPlane {
+    PBPolygon polygon = 3;
+    PBUUColor uuColor = 2;
+}
+
+message PBPicture {
+    repeated PBLine lines = 1;
+    repeated PBPlane planes = 2;
+}
+
+enum PBOrientation {
+    horizontal = 0;
+    vertical = 1;
+}
+
+message PBText {
+    string string = 1;
+    PBOrientation orientation = 2;
+    double size = 3;
+    double widthCount = 4;
+    PBPoint origin = 5;
+}
+
+message PBBorder {
+    double location = 1;
+    PBOrientation orientation = 2;
+}
+
+message PBIntPointStringDic {
+    map<string, PBIntPoint> value = 1;
+}
+message PBStringIntPointDicElement {
+    PBIntPoint key = 1;
+    string value = 2;
+}
+message PBStringIntPointDic {
+    repeated PBStringIntPointDicElement value = 1;
+}
+
+message PBSheet {
+    PBPicture picture = 1;
+    PBPicture draftPicture = 2;
+    repeated PBText texts = 3;
+    repeated PBBorder borders = 4;
+    PBUUColor backgroundUUColor = 5;
+}
+
+message PBWorld {
+    PBIntPointStringDic sheetPositions = 1;
+}
+
+enum PBRectCorner {
+    minXMinY = 0;
+    minXMaxY = 1;
+    maxXMinY = 2;
+    maxXMaxY = 3;
+}
+message PBCornerRectValue {
+    PBRect rect = 1;
+    PBRectCorner rectCorner = 2;
+}
+message PBCornerRectValueArray {
+    repeated PBCornerRectValue value = 1;
+}
+
+message PBFinding {
+    PBPoint worldPosition = 1;
+    string string = 2;
+}
+
+message PBIntIndexValue {
+    int64 value = 1;
+    int64 index = 2;
+}
+message PBLineIndexValue {
+    PBLine value = 1;
+    int64 index = 2;
+}
+message PBPlaneIndexValue {
+    PBPlane value = 1;
+    int64 index = 2;
+}
+message PBTextIndexValue {
+    PBText value = 1;
+    int64 index = 2;
+}
+message PBBorderIndexValue {
+    PBBorder value = 1;
+    int64 index = 2;
+}
+message PBColorValue {
+    PBUUColor uuColor = 1;
+    repeated int64 planeIndexes = 3;
+    bool isBackground = 5;
+}
+message PBIntClosedRange {
+    int64 lowerBound = 1;
+    int64 upperBound = 2;
+}
+message PBPlaneValue {
+    repeated PBPlane planes = 1;
+    repeated PBIntIndexValue moveIndexValues = 2;
+}
+message PBTextValue {
+    string string = 1;
+    PBIntClosedRange replacedRange = 2;
+    oneof originOptional {
+        PBPoint origin = 3;
+    }
+    oneof sizeOptional {
+        double size = 4;
+    }
+}
+message PBTextValueIndexValue {
+    PBTextValue value = 1;
+    int64 index = 2;
+}
+message PBSheetValue {
+    repeated PBLine lines = 1;
+    repeated PBPlane planes = 2;
+    repeated PBText texts = 3;
+}
+message PBInt64Array {
+    repeated int64 value = 1;
+}
+message PBLineArray {
+    repeated PBLine value = 1;
+}
+message PBPlaneArray {
+    repeated PBPlane value = 1;
+}
+message PBIntPointArray {
+    repeated PBIntPoint value = 1;
+}
+message PBIntIndexValueArray {
+    repeated PBIntIndexValue value = 1;
+}
+message PBLineIndexValueArray {
+    repeated PBLineIndexValue value = 1;
+}
+message PBPlaneIndexValueArray {
+    repeated PBPlaneIndexValue value = 1;
+}
+message PBTextIndexValueArray {
+    repeated PBTextIndexValue value = 1;
+}
+message PBBorderIndexValueArray {
+    repeated PBBorderIndexValue value = 1;
+}
+message PBSheetUndoItem {
+    oneof value {
+        PBLine appendLine = 1;
+        PBLineArray appendLines = 2;
+        PBPlaneArray appendPlanes = 3;
+        int64 removeLastLines = 4;
+        int64 removeLastPlanes = 5;
+        PBLineIndexValueArray insertLines = 6;
+        PBPlaneIndexValueArray insertPlanes = 7;
+        PBInt64Array removeLines = 8;
+        PBInt64Array removePlanes = 9;
+        PBPlaneValue setPlaneValue = 10;
+        bool changeToDraft = 11;
+        PBPicture setPicture = 12;
+        PBLineIndexValueArray insertDraftLines = 13;
+        PBPlaneIndexValueArray insertDraftPlanes = 14;
+        PBInt64Array removeDraftLines = 15;
+        PBInt64Array removeDraftPlanes = 16;
+        PBPicture setDraftPicture = 17;
+        PBTextIndexValueArray insertTexts = 18;
+        PBInt64Array removeTexts = 19;
+        PBTextValueIndexValue replaceString = 20;
+        PBColorValue changedColors = 21;
+        PBBorderIndexValueArray insertBorders = 22;
+        PBInt64Array removeBorders = 23;
+    }
+}
+message PBWorldUndoItem {
+    oneof value {
+        PBStringIntPointDic insertSheets = 1;
+        PBIntPointArray removeSheets = 2;
+    }
+}
+
+message PBUndoDataValue {
+    bytes undoItemData = 1;
+    bytes redoItemData = 2;
+}
+message PBUndoGroup {
+    repeated PBUndoDataValue values = 1;
+}
+message PBBranch {
+    repeated PBUndoGroup groups = 1;
+    int64 childrenCount = 2;
+    oneof selectedChildIndexOptional {
+        int64 selectedChildIndex = 3;
+    }
+}
+message PBBranchCoder {
+    repeated PBBranch allBranches = 1;
+}
+message PBHistory {
+    PBBranchCoder branchCoder = 1;
+    int64 currentVersionIndex = 2;
+}
+
+message PBCopiedSheetsValue {
+    PBPoint deltaPoint = 1;
+    PBStringIntPointDic sheetIDs = 2;
+}
+message PBPlanesValue {
+    repeated PBPlane planes = 1;
+}
+message PBPastableObject {
+    oneof value {
+        PBCopiedSheetsValue copiedSheetsValue = 1;
+        PBSheetValue sheetValue = 2;
+        PBBorder border = 3;
+        PBText text = 4;
+        string string = 5;
+        PBPicture picture = 6;
+        PBPlanesValue planesValue = 7;
+        PBUUColor uuColor = 8;
+    }
+}
