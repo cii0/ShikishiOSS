@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -169,7 +169,9 @@ final class LineEditor: Editor {
     var isSnapStraight = false {
         didSet {
             guard isSnapStraight != oldValue else { return }
-            Feedback.performAlignment()
+            if isSnapStraight {
+                Feedback.performAlignment()
+            }
             tempLineNode?.lineType = isSnapStraight ? .color(.selected) : .color(.content)
         }
     }
@@ -280,8 +282,6 @@ final class LineEditor: Editor {
             }
             let linearLine = LinearLine(temps.first!.control.point,
                                         temps.last!.control.point)
-            let prLinearLine = LinearLine(temps.first!.pressurePoint,
-                                          temps.last!.pressurePoint)
             let ss = scale * scale
             for tc in temps {
                 let speed = (tc.speed * scale).clipped(min: minSpeed, max: maxSpeed)
@@ -294,10 +294,6 @@ final class LineEditor: Editor {
                     return linearLine.distanceSquared(from: tc.control.point) * ss > maxD * maxD
                 }
                 if tc.position.distanceSquared(p) * ss > nMaxD * nMaxD {
-                    return true
-                }
-                
-                if prLinearLine.distanceSquared(from: tc.pressurePoint) > maxPrD * maxPrD {
                     return true
                 }
             }
@@ -737,6 +733,9 @@ final class LineEditor: Editor {
                 
                 sheetView.newUndoGroup()
                 sheetView.append(tempLine)
+//                if sheetView.isSound {
+//                    document.updateAudio()
+//                }
             } else {
                 var isWorldNewUndoGroup = true
                 for yi in minY...maxY {
@@ -862,6 +861,7 @@ final class LineEditor: Editor {
             rectNode?.removeFromParent()
             
             document.updateSelects()
+            document.updateFinding(at: p)
         }
     }
     

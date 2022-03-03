@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -124,7 +124,8 @@ extension Color {
     static let disabled = Color(white: 0.97)
     static let border = Color(white: 0.88)
     static let subBorder = Color(white: 0.8)
-
+    static let draft = Color(red: 0.1, green: 0.4, blue: 1)
+    
     static let selectedWhite = 0.5
     static let subSelectedWhite = 0.8
     static let subSelectedOpacity = 0.25

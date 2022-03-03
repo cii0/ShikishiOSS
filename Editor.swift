@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -239,8 +239,8 @@ final class Scroller: ScrollEditor {
             
             let lengthDt = length / dt
             if !isUnclipAngle(angle)
-                && lengthDt > updateSpeed
-                && ls > -2 && ls < 2  {
+                && lengthDt > updateSpeed && max(dp.x, dp.y) > 50
+                && ls > -2 && ls < 2 {
                 
                 let s0 = document.worldToScreenScale
                 let s = s0 > 0.6 ? s0 : s0.clipped(min: 0.6, max: 0.25,
@@ -249,25 +249,37 @@ final class Scroller: ScrollEditor {
                     let speed = abs(dp.x) / dt
                     let sv = document.snappableCameraX * fps * s
                     if speed > sv {
-                        dp.x = dp.x.signValue * sv * dt
+                        if document.isSnapScroll {
+                            dp.x = dp.x.signValue * sv * dt
+                        }
                         dp.y = 0
-                        document.snappedCameraType = .x
+                        if document.isSnapScroll {
+                            document.snappedCameraType = .x
+                        }
                     } else {
-                        document.snappedCameraType = .none
+                        if document.isSnapScroll {
+                            document.snappedCameraType = .none
+                        }
                     }
                 } else {
                     let speed = abs(dp.y) / dt
                     let sv = document.snappableCameraY * fps * s
                     if speed > sv {
                         dp.x = 0
-                        dp.y = dp.y.signValue * sv * dt
-                        document.snappedCameraType = .y
+                        if document.isSnapScroll {
+                            dp.y = dp.y.signValue * sv * dt
+                            document.snappedCameraType = .y
+                        }
                     } else {
-                        document.snappedCameraType = .none
+                        if document.isSnapScroll {
+                            document.snappedCameraType = .none
+                        }
                     }
                 }
             } else {
-                document.snappedCameraType = .none
+                if document.isSnapScroll {
+                    document.snappedCameraType = .none
+                }
             }
             
             var transform = document.camera.transform
@@ -549,6 +561,89 @@ final class FaceEditor: Editor {
                         sheetView.cutFaces(with: Path(f))
                     }
                 }
+            }
+        case .changed:
+            break
+        case .ended:
+            document.cursor = Document.defaultCursor
+        }
+    }
+}
+
+final class SoundEnabler: InputKeyEditor {
+    let editor: SoundEditor
+    
+    init(_ document: Document) {
+        editor = SoundEditor(document)
+    }
+    
+    func send(_ event: InputKeyEvent) {
+        editor.enableSound(with: event)
+    }
+    func updateNode() {
+        editor.updateNode()
+    }
+}
+final class SoundDisabler: InputKeyEditor {
+    let editor: SoundEditor
+    
+    init(_ document: Document) {
+        editor = SoundEditor(document)
+    }
+    
+    func send(_ event: InputKeyEvent) {
+        editor.disableSound(with: event)
+    }
+    func updateNode() {
+        editor.updateNode()
+    }
+}
+final class SoundEditor: Editor {
+    let document: Document
+    let isEditingSheet: Bool
+    
+    init(_ document: Document) {
+        self.document = document
+        isEditingSheet = document.isEditingSheet
+    }
+    
+    func enableSound(with event: InputKeyEvent) {
+        guard isEditingSheet else {
+            document.stop(with: event)
+            return
+        }
+        let sp = document.lastEditedSheetScreenCenterPositionNoneCursor
+            ?? event.screenPoint
+        let p = document.convertScreenToWorld(sp)
+        switch event.phase {
+        case .began:
+            document.cursor = .arrow
+            
+            let (_, sheetView, _, _) = document.sheetViewAndFrame(at: p)
+            if let sheetView = sheetView {
+                sheetView.isSound = true
+            }
+        case .changed:
+            break
+        case .ended:
+            document.cursor = Document.defaultCursor
+        }
+    }
+    func disableSound(with event: InputKeyEvent) {
+        guard isEditingSheet else {
+            document.stop(with: event)
+            return
+        }
+        let sp = document.lastEditedSheetScreenCenterPositionNoneCursor
+            ?? event.screenPoint
+        let p = document.convertScreenToWorld(sp)
+        switch event.phase {
+        case .began:
+            document.cursor = .arrow
+            
+            let (_, sheetView, _, _) = document.sheetViewAndFrame(at: p)
+            if let sheetView = sheetView {
+                sheetView.isSound = false
             }
         case .changed:
             break

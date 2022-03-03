@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -183,6 +183,14 @@ extension String {
     var toSubscript: String {
         String(compactMap { $0.toSubscript })
     }
+    
+    func omit(count: Int, omitString: String = "...") -> String {
+        if count < self.count {
+            return self[..<index(fromInt: count)] + omitString
+        } else {
+            return self
+        }
+    }
 }
 extension Substring {
     func substring(_ str: String,
@@ -340,6 +348,28 @@ extension Text {
     }
 }
 extension Text {
+    var typelineSpacing: Double {
+        let typobute = self.typobute
+        let sd = Font.defaultSize
+        let size = typobute.font.size <= sd ?
+            typobute.font.size :
+            (typobute.font.size >= sd * 2 ?
+                typobute.font.size * (1.3 / 2) :
+                typobute.font.size.clipped(min: sd,
+                                           max: sd * 2,
+                                           newMin: sd,
+                                           newMax: sd * 1.3))
+        let mtlw = min(typobute.clippedMaxTypelineWidth,
+                       typobute.maxTypelineWidth)
+        let typelineSpacing = mtlw.clipped(min: typobute.font.size * 20,
+                                           max: typobute.font.size * 30,
+                                           newMin: size * 0.5,
+                                           newMax: size * 10 / 12)
+        return typelineSpacing
+    }
+    var typelineHeight: Double {
+        typobute.font.size + typelineSpacing
+    }
     var font: Font {
         Font(name: Font.defaultName, size: size)
     }

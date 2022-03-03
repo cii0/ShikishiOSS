@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -323,11 +323,12 @@ final class TextOrientationEditor: Editor {
                                          in: sheetView)
                 }
             }
+            
+            document.updateSelects()
+            document.updateFinding(at: p)
         case .changed:
             break
         case .ended:
-            document.updateSelects()
-            
             document.cursor = Document.defaultCursor
         }
     }
@@ -475,11 +476,12 @@ final class TextScriptEditor: Editor {
                     }
                 }
             }
+            
+            document.updateSelects()
+            document.updateFinding(at: p)
         case .changed:
             break
         case .ended:
-            document.updateSelects()
-            
             document.cursor = Document.defaultCursor
         }
     }
@@ -574,6 +576,37 @@ final class TextEditor: Editor {
             document.stop(with: event)
             return
         }
+        
+        if !document.finding.isEmpty,
+           document.editingFindingSheetView == nil {
+            let sp = event.screenPoint
+            let p = document.convertScreenToWorld(sp)
+            guard let sheetView = document.madeSheetView(at: p) else { return }
+            let shp = document.sheetPosition(from: sheetView)
+            let inP = sheetView.convertFromWorld(p)
+            if let (textView, _, _, _) = sheetView.textTuple(at: inP) {
+                loop: for (nshp, node) in document.findingNodes {
+                    guard nshp == shp else { continue }
+                    for child in node.children {
+                        if child.contains(p) {
+                            document.isEditingFinding = true
+                            if let b = child.transformedBounds,
+                               let range = textView.range(from: Selection(rect: b, rectCorner: .maxXMaxY)) {
+                                document.editingFindingSheetView = sheetView
+                                document.editingFindingTextView = textView
+                                document.editingFindingRange
+                                    = textView.model.string.intRange(from: range)
+                                var str = textView.model.string
+                                str.removeSubrange(range)
+                                document.editingFindingOldString = str
+                            }
+                            break loop
+                        }
+                    }
+                }
+            }
+        }
+        
 //        print(isMovedCursor, editingSheetView, editingTextView, editingTextView?.selectedRange)
         document.textCursorNode.isHidden = true
         
@@ -659,6 +692,7 @@ final class TextEditor: Editor {
         if let editingTextView = editingTextView {
             inputKeyTimer.cancel()
             editingTextView.unmark()
+            let oldEditingSheetView = editingSheetView
             if isEndEdit {
                 editingTextView.isHiddenSelectedRange = true
                 editingSheetView = nil
@@ -667,6 +701,9 @@ final class TextEditor: Editor {
             }
             
             document.updateSelects()
+            if let oldEditingSheetView = oldEditingSheetView {
+                document.updateFinding(from: oldEditingSheetView)
+            }
         }
     }
     func endInputKey(isUnmarkText: Bool = false, isRemoveText: Bool = false) {
@@ -682,6 +719,9 @@ final class TextEditor: Editor {
             }
             
             document.updateSelects()
+            if let editingSheetView = editingSheetView {
+                document.updateFinding(from: editingSheetView)
+            }
         }
     }
     func inputKey(with event: InputTextEvent,
@@ -761,6 +801,25 @@ final class TextEditor: Editor {
         }
     }
     func moveEndInputKey(isStopFromMarkedText: Bool = false) {
+        func updateFinding() {
+            if !document.finding.isEmpty {
+                if let sheetView = editingSheetView,
+                   let textView = editingTextView,
+                   sheetView == document.editingFindingSheetView
+                    && textView == document.editingFindingTextView,
+                   let oldString = document.editingFindingOldString,
+                   let (_, substring)
+                    = oldString.difference(to: textView.model.string),
+                   substring != document.finding.string {
+                    
+                    
+//                    textView.model.string = oldString
+                    document.replaceFinding(from: substring)
+                }
+                
+                document.isEditingFinding = false
+            }
+        }
         if let editingTextView = editingTextView,
            let editingSheetView = editingSheetView {
             
@@ -768,10 +827,15 @@ final class TextEditor: Editor {
                 inputKeyTimer.cancel()
                 editingTextView.unmark()
                 editingTextView.isHiddenSelectedRange = true
+                updateFinding()
                 self.editingSheetView = nil
                 self.editingTextView = nil
                 removeText(in: editingTextView, in: editingSheetView)
+            } else {
+                updateFinding()
             }
+        } else {
+            updateFinding()
         }
         if Cursor.isHidden {
             Cursor.isHidden = false
@@ -820,6 +884,7 @@ final class TextEditor: Editor {
             }
             captureString = textView.model.string
             document.updateSelects()
+            document.updateFinding(from: sheetView)
         }
     }
     func removeText(in textView: SheetTextView,
@@ -833,6 +898,7 @@ final class TextEditor: Editor {
                 editingTextView = nil
             }
             document.updateSelects()
+            document.updateFinding(from: sheetView)
         }
     }
     
@@ -850,12 +916,27 @@ final class TextEditor: Editor {
         removedText.origin += minP
         let ssValue = SheetValue(texts: [removedText])
         
+        let removeRange: Range<String.Index>
+        if textView.typesetter.isFirst(at: range.lowerBound) && textView.typesetter.isLast(at: range.upperBound) {
+            
+            let str = textView.typesetter.string
+            if  str.startIndex < range.lowerBound {
+                removeRange = str.index(before: range.lowerBound)..<range.upperBound
+            } else if range.upperBound < str.endIndex {
+                removeRange = range.lowerBound..<str.index(after: range.upperBound)
+            } else {
+                removeRange = range
+            }
+        } else {
+            removeRange = range
+        }
+        
         let captureString = textView.model.string
         let captureOrigin = textView.model.origin
         let captureSize = textView.model.size
         editingTextView = textView
         editingSheetView = sheetView
-        textView.removeCharacters(in: range)
+        textView.removeCharacters(in: removeRange)
         textView.unmark()
         let sb = sheetView.model.bounds.inset(by: Sheet.textPadding)
         if let textFrame = textView.model.frame,
@@ -1254,9 +1335,12 @@ final class TextView<T: BinderProtocol>: View {
     let cursorNode = Node(isHidden: true,
                           lineWidth: 0.5, lineType: .color(.background),
                           fillType: .color(.content))
+    let borderNode = Node(isHidden: true,
+                          lineWidth: 0.5, lineType: .color(.border))
     var isHiddenSelectedRange = true {
         didSet {
             cursorNode.isHidden = isHiddenSelectedRange
+//            borderNode.isHidden = isHiddenSelectedRange
         }
     }
     
@@ -1266,7 +1350,8 @@ final class TextView<T: BinderProtocol>: View {
         
         typesetter = binder[keyPath: keyPath].typesetter
         
-        node = Node(children: [markedRangeNode, replacedRangeNode, cursorNode],
+        node = Node(children: [markedRangeNode, replacedRangeNode,
+                               cursorNode, borderNode],
                     attitude: Attitude(position: binder[keyPath: keyPath].origin),
                     fillType: .color(.content))
         updateLineWidth()
@@ -1284,6 +1369,7 @@ extension TextView {
     func updateLineWidth() {
         let ratio = model.size / Font.defaultSize
         cursorNode.lineWidth = 0.5 * ratio
+        borderNode.lineWidth = cursorNode.lineWidth
         markedRangeNode.lineWidth = Line.defaultLineWidth * ratio
         replacedRangeNode.lineWidth = Line.defaultLineWidth * 1.5 * ratio
     }
@@ -1296,6 +1382,7 @@ extension TextView {
     }
     func updatePath() {
         node.path = typesetter.path()
+        borderNode.path = typesetter.maxTypelineWidthPath
     }
     
     private func updateMarkedRange() {
@@ -1439,6 +1526,9 @@ extension TextView {
     
     func intersects(_ rect: Rect) -> Bool {
         typesetter.intersects(rect)
+    }
+    func intersectsHalf(_ rect: Rect) -> Bool {
+        typesetter.intersectsHalf(rect)
     }
     
     func ranges(at selection: Selection) -> [Range<String.Index>] {

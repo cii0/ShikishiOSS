@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -232,6 +232,9 @@ final class UndoEditor: Editor {
             rootNode.removeFromParent()
             
             document.updateSelects()
+            if let sheetView = sheetView {
+                document.updateFinding(from: sheetView)
+            }
             
             document.cursor = Document.defaultCursor
         }
@@ -489,6 +492,9 @@ final class UndoEditor: Editor {
             rootNode.removeFromParent()
             
             document.updateSelects()
+            if let sheetView = sheetView {
+                document.updateFinding(from: sheetView)
+            }
             
             document.cursor = Document.defaultCursor
         }

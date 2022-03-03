@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Shikishi.  If not, see <http://www.gnu.org/licenses/>.
 
-protocol BinderProtocol: class {
+protocol BinderProtocol: AnyObject {
     associatedtype Value
     var value: Value { get set }
 }
@@ -58,7 +58,7 @@ final class RecordBinder<Value: Codable & Serializable>: BinderProtocol {
     }
 }
 
-protocol View: class, Hashable {
+protocol View: AnyObject, Hashable {
     associatedtype Binder: BinderProtocol
     associatedtype Model
     var model: Model { get set }

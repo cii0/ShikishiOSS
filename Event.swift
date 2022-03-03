@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -202,6 +202,9 @@ extension Quasimode {
     static let changeToVerticalText = Quasimode(modifier: [.command], .l)
     static let changeToHorizontalText = Quasimode(modifier: [.command, .shift], .l)
     static let lookUp = Quasimode(.lookUpTap)
+    
+    static let enableSound = Quasimode(modifier: [.command], .no1)
+    static let disableSound = Quasimode(modifier: [.shift, .command], .no1)
     
     static let lassoCut = Quasimode(modifier: [.command], .drag)
     static let select = Quasimode(modifier: [.shift, .command], .drag)

@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -86,6 +86,16 @@ extension Typesetter {
         case .vertical:
             return Size(width: typeline.spacing / 2,
                         height: typobute.font.size)
+        }
+    }
+    func halfPaddingSize(from typeline: Typeline) -> Size {
+        switch typobute.orientation {
+        case .horizontal:
+            return Size(width: typobute.font.size / 2,
+                        height: typeline.spacing / 2)
+        case .vertical:
+            return Size(width: typeline.spacing / 2,
+                        height: typobute.font.size / 2)
         }
     }
     func spacingSize(from typeline: Typeline) -> Size {
@@ -330,11 +340,77 @@ extension Typesetter {
                 .intersects(rect)
         }
     }
+    func intersectsHalf(_ rect: Rect) -> Bool {
+        typelines.contains {
+            $0.frame
+                .outset(by: halfPaddingSize(from: $0))
+                .intersects(rect)
+        }
+    }
+    
+    func containsFirst(_ p: Point, offset: Double) -> Bool {
+        guard let typeline = typelines.first else { return false }
+        switch typobute.orientation {
+        case .horizontal:
+            return typeline.frame.outset(by: offset, .top).contains(p)
+        case .vertical:
+            return typeline.frame.outset(by: offset, .right).contains(p)
+        }
+    }
+    func containsLast(_ p: Point, offset: Double) -> Bool {
+        guard let typeline = typelines.last else { return false }
+        switch typobute.orientation {
+        case .horizontal:
+            return typeline.frame.outset(by: offset, .bottom).contains(p)
+        case .vertical:
+            return typeline.frame.outset(by: offset, .left).contains(p)
+        }
+    }
+    func firstEdge(offset: Double) -> Edge {
+        firstEdge(from: typelines.first!, offset: offset)
+    }
+    func firstEdge(from typeline: Typeline, offset: Double) -> Edge {
+        switch typobute.orientation {
+        case .horizontal: return typeline.frame.outset(by: offset, .top).topEdge
+        case .vertical: return typeline.frame.outset(by: offset, .right).rightEdge
+        }
+    }
+    func lastEdge(offset: Double) -> Edge {
+        lastEdge(from: typelines.last!, offset: offset)
+    }
+    func lastEdge(from typeline: Typeline, offset: Double) -> Edge {
+        switch typobute.orientation {
+        case .horizontal: return typeline.frame.outset(by: offset, .bottom).bottomEdge
+        case .vertical: return typeline.frame.outset(by: offset, .left).leftEdge
+        }
+    }
+    var width: Double {
+        switch typobute.orientation {
+        case .horizontal: return typoBounds?.width ?? 0
+        case .vertical: return typoBounds?.height ?? 0
+        }
+    }
+    var height: Double {
+        switch typobute.orientation {
+        case .horizontal: return typoBounds?.height ?? 0
+        case .vertical: return typoBounds?.width ?? 0
+        }
+    }
+    func isFirst(at i: String.Index) -> Bool {
+        guard let tl = typeline(at: i) else { return false }
+        return tl.range.lowerBound == i
+    }
+    func isLast(at i: String.Index) -> Bool {
+        guard let tl = typeline(at: i) else { return false }
+        return !tl.isReturnEnd ?
+            tl.range.upperBound == i :
+            string.startIndex < tl.range.upperBound
+            && string.index(before: tl.range.upperBound) == i
+    }
     
     func characterIndexWithOutOfBounds(for point: Point) -> String.Index? {
-        if let i = characterIndex(for: point),
-           let cr = characterRatio(for: point) {
-            
+        if let i = characterIndex(for: point, isHalfPadding: true),
+           let cr = characterRatio(for: point, isHalfPadding: true) {
             return cr > 0.5 ? string.index(after: i) : i
         }
         guard !typelines.isEmpty else { return nil }
@@ -342,7 +418,7 @@ extension Typesetter {
         case .horizontal:
             for typeline in typelines {
                 let frame = typeline.frame
-                    .outset(by: paddingSize(from: typeline))
+                    .outset(by: halfPaddingSize(from: typeline))
                 if point.y > frame.minY {
                     if point.y > frame.maxY
                         || point.x < frame.minX {
@@ -358,7 +434,7 @@ extension Typesetter {
         case .vertical:
             for typeline in typelines {
                 let frame = typeline.frame
-                    .outset(by: paddingSize(from: typeline))
+                    .outset(by: halfPaddingSize(from: typeline))
                 if point.x > frame.minX {
                     if point.x > frame.maxX
                         || point.y > frame.maxY {
@@ -380,6 +456,50 @@ extension Typesetter {
             return typeline.lastTypoBounds() + typeline.origin
         } else{
             return lastReturnBounds
+        }
+    }
+    var firstEditReturnBounds: Rect? {
+        switch typobute.orientation {
+        case .horizontal:
+            if let typeline = typelines.first {
+                let font = typobute.font
+                let d = typobute.font.size + typeline.spacing
+                let p = Point(typeline.origin.x, typeline.origin.y + d)
+                return Rect(x: p.x, y: p.y - font.size / 2,
+                            width: 0, height: font.size)
+            }
+            return nil
+        case .vertical:
+            if let typeline = typelines.first {
+                let font = typobute.font
+                let d = typobute.font.size + typeline.spacing
+                let p = Point(typeline.origin.x + d, typeline.origin.y)
+                return Rect(x: p.x - font.size / 2, y: p.y,
+                            width: font.size, height: 0)
+            }
+            return nil
+        }
+    }
+    var lastEditReturnBounds: Rect? {
+        switch typobute.orientation {
+        case .horizontal:
+            if let typeline = typelines.last {
+                let font = typobute.font
+                let d = typobute.font.size + typeline.spacing
+                let p = Point(typeline.origin.x, typeline.origin.y - d)
+                return Rect(x: p.x, y: p.y - font.size / 2,
+                            width: 0, height: font.size)
+            }
+            return nil
+        case .vertical:
+            if let typeline = typelines.last {
+                let font = typobute.font
+                let d = typobute.font.size + typeline.spacing
+                let p = Point(typeline.origin.x - d, typeline.origin.y)
+                return Rect(x: p.x - font.size / 2, y: p.y,
+                            width: font.size, height: 0)
+            }
+            return nil
         }
     }
     var lastReturnBounds: Rect? {
@@ -405,7 +525,8 @@ extension Typesetter {
         }
     }
     
-    func characterIndex(for point: Point) -> String.Index? {
+    func characterIndex(for point: Point,
+                        isHalfPadding: Bool = false) -> String.Index? {
         guard let typeline = self.typeline(for: point) else {
             switch typobute.orientation {
             case .horizontal:
@@ -415,7 +536,9 @@ extension Typesetter {
                     let p = Point(typeline.origin.x, typeline.origin.y - d)
                     let frame = Rect(x: p.x, y: p.y - font.size / 2,
                                      width: 0, height: font.size)
-                        .outset(by: paddingSize(from: typeline))
+                        .outset(by: isHalfPadding ?
+                                    halfPaddingSize(from: typeline) :
+                                    paddingSize(from: typeline))
                     if frame.contains(point) {
                         return typeline.range.upperBound
                     }
@@ -428,7 +551,9 @@ extension Typesetter {
                     let p = Point(typeline.origin.x - d, typeline.origin.y)
                     let frame = Rect(x: p.x - font.size / 2, y: p.y,
                                  width: font.size, height: 0)
-                        .outset(by: paddingSize(from: typeline))
+                        .outset(by: isHalfPadding ?
+                                    halfPaddingSize(from: typeline) :
+                                    paddingSize(from: typeline))
                     if frame.contains(point) {
                         return typeline.range.upperBound
                     }
@@ -436,11 +561,13 @@ extension Typesetter {
                 return nil
             }
         }
+        let padding = isHalfPadding ? typobute.font.size / 2 : typobute.font.size
         return typeline.characterIndex(for: point - typeline.origin,
-                                       padding: typobute.font.size)
+                                       padding: padding)
     }
     
-    func characterRatio(for point: Point) -> Double? {
+    func characterRatio(for point: Point,
+                        isHalfPadding: Bool = false) -> Double? {
         guard let typeline = self.typeline(for: point) else {
             switch typobute.orientation {
             case .horizontal:
@@ -450,7 +577,9 @@ extension Typesetter {
                     let p = Point(typeline.origin.x, typeline.origin.y - d)
                     let frame = Rect(x: p.x, y: p.y - font.size / 2,
                                      width: 0, height: font.size)
-                        .outset(by: paddingSize(from: typeline))
+                        .outset(by: isHalfPadding ?
+                                    halfPaddingSize(from: typeline) :
+                                    paddingSize(from: typeline))
                     if frame.contains(point) {
                         return 0
                     }
@@ -463,7 +592,9 @@ extension Typesetter {
                     let p = Point(typeline.origin.x - d, typeline.origin.y)
                     let frame = Rect(x: p.x - font.size / 2, y: p.y,
                                      width: font.size, height: 0)
-                        .outset(by: paddingSize(from: typeline))
+                        .outset(by: isHalfPadding ?
+                                    halfPaddingSize(from: typeline) :
+                                    paddingSize(from: typeline))
                     if frame.contains(point) {
                         return 0
                     }
@@ -471,8 +602,9 @@ extension Typesetter {
                 return nil
             }
         }
+        let padding = isHalfPadding ? typobute.font.size / 2 : typobute.font.size
         return typeline.characterRatio(for: point - typeline.origin,
-                                       padding: typobute.font.size)
+                                       padding: padding)
     }
     
     func characterAdvance(at i: String.Index) -> Double {
@@ -732,6 +864,11 @@ extension Typesetter {
                 return rects + [lb.outset(by: spacingSize(from: typeline))]
             }
         }
+        if let typeline = typeline(at: range.upperBound),
+           typeline.range.lowerBound == range.upperBound {
+            let lb = typeline.firstTypoBounds() + typeline.origin
+            return rects + [lb.outset(by: spacingSize(from: typeline))]
+        }
         return rects
     }
     
@@ -876,5 +1013,18 @@ extension Typesetter {
         }
         pathlines += indentPathlines()
         return pathlines
+    }
+    
+    var maxTypelineWidthPath: Path {
+        guard let b = typoBounds else { return Path() }
+        let w = typobute.maxTypelineWidth
+        switch typobute.orientation {
+        case .horizontal:
+            return Path(Edge(Point(w + b.minX, b.minY),
+                             Point(w + b.minX, b.maxY)))
+        case .vertical:
+            return Path(Edge(Point(b.minX, b.maxY - w),
+                             Point(b.maxX, b.maxY - w)))
+        }
     }
 }

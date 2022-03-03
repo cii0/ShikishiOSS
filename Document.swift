@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -471,6 +471,7 @@ final class Document {
                 }
             }
             DispatchQueue.main.async {
+                self?.rootDirectory.resetWriteAll()
                 self?.savingItem = nil
                 
                 self?.savingFuncs.forEach { $0() }
@@ -491,6 +492,7 @@ final class Document {
         } catch {
             rootNode.show(error)
         }
+        rootDirectory.resetWriteAll()
     }
     func endSave(completionHandler: @escaping (Document?) -> ()) {
         let message = "Saving".localized
@@ -517,6 +519,7 @@ final class Document {
                     }
                 }
                 DispatchQueue.main.async {
+                    self?.rootDirectory.resetWriteAll()
                     timer.cancel()
                     progressPanel.close()
                     completionHandler(self)
@@ -1085,7 +1088,7 @@ final class Document {
                 cr = cr == nil ? inFrame : cr!.union(inFrame)
                 for textView in sheetView.textsView.elementViews {
                     let nRect = textView.convertFromWorld(rect)
-                    guard textView.intersects(nRect) else { continue }
+                    guard textView.intersectsHalf(nRect) else { continue }
                     let tfp = textView.convertFromWorld(selection.firstOrigin)
                     let tlp = textView.convertFromWorld(selection.lastOrigin)
                     if textView.characterIndex(for: tfp) != nil {
@@ -1183,14 +1186,15 @@ final class Document {
         }
     }
     func isSelect(at p: Point) -> Bool {
+        let d = 1.0 * screenToWorldScale
         if isSelectedText {
-            return selectedFrames.contains(where: { $0.contains(p) })
+            return selectedFrames.contains(where: { $0.outset(by: d).contains(p) })
         } else {
             if let r = selections.first?.rect {
-                if r.contains(p) {
+                if r.outset(by: d).contains(p) {
                     return true
                 }
-                return selectedFrames.contains(where: { $0.contains(p) })
+                return selectedFrames.contains(where: { $0.outset(by: d).contains(p) })
             }
             return false
         }
@@ -1234,6 +1238,28 @@ final class Document {
     private(set) var findingNodes = [SheetPosition: Node]()
     let findingSplittedWidth
         = (Double.hypot(Sheet.width / 2, Sheet.height / 2) * 1.25).rounded()
+    var findingLineWidth: Double {
+        isEditingFinding ? worldLineWidth * 2 : worldLineWidth
+    }
+    var isEditingFinding = false {
+        didSet {
+            guard isEditingFinding != oldValue else { return }
+            let l = findingLineWidth
+            findingNodes.forEach { v in
+                v.value.children.forEach { $0.lineWidth = l }
+            }
+            if !isEditingFinding {
+                editingFindingSheetView = nil
+                editingFindingTextView = nil
+                editingFindingRange = nil
+                editingFindingOldString = nil
+            }
+        }
+    }
+    weak var editingFindingSheetView: SheetView?,
+             editingFindingTextView: SheetTextView?
+    var editingFindingRange: Range<Int>?,
+        editingFindingOldString: String?
     private func updateWithFinding() {
         guard !finding.isEmpty else {
             if findingNode != nil {
@@ -1264,11 +1290,30 @@ final class Document {
         findingNode = node
         findingNodes.forEach { updateFindingNodes(at: $0.key) }
     }
+    func updateFinding(at p: Point) {
+        guard !finding.isEmpty else { return }
+        if let sheetView = sheetView(at: p) {
+            updateFinding(from: sheetView)
+        }
+    }
+    func updateFinding(from sheetView: SheetView) {
+        guard !finding.isEmpty,
+              let shp = sheetPosition(from: sheetView) else { return }
+        updateFindingNodes(at: shp)
+    }
+    func sheetPosition(from sheetView: SheetView) -> SheetPosition? {
+        for svv in sheetViewValues {
+            if sheetView == svv.value.view {
+                return svv.key
+            }
+        }
+        return nil
+    }
     private func updateFindingNodes(at shp: SheetPosition) {
         guard let node = findingNodes[shp] else { return }
         
         let sf = sheetFrame(with: shp)
-        let l = worldLineWidth, p: Point
+        let l = findingLineWidth, p: Point
         var nodes = [Node]()
         if finding.worldPosition.distance(sf.centerPoint) < findingSplittedWidth {
             p = finding.worldPosition
@@ -1284,6 +1329,9 @@ final class Document {
         if let nSheetView = sheetView(at: shp) {
             for text in nSheetView.model.texts {
                 for range in text.string.ranges(of: finding.string) {
+                    if text.string.intRange(from: range) == editingFindingRange {
+                        //
+                    }
                     if let rect = text.typesetter.typoBounds(for: range) {
                         let nr = nSheetView.convertToWorld(rect + text.origin)
                         nodes.append(Node(path: Path(nr),
@@ -1311,7 +1359,7 @@ final class Document {
     }
     func updateFindingNodes() {
         if !findingNodes.isEmpty {
-            let l = worldLineWidth
+            let l = findingLineWidth
             findingNodes.values.forEach {
                 $0.children.forEach { $0.lineWidth = l }
             }
@@ -1443,9 +1491,17 @@ final class Document {
             }
         }
         if recordCount > 0 {
-            rootNode.show(message: "\(recordCount)",
-                          infomation: "",
-                          okTitle: "Replace".localized) {
+            for (shp, _) in findingNodes {
+                if sheetViewValues[shp]?.view != nil,
+                   let sid = sheetID(at: shp),
+                   sheetRecorders[sid] != nil {
+                    recordCount += 1
+                }
+            }
+            rootNode.show(message: String(format: "Do you want to replace the \"%2$@\" written on the %1$d sheets with the \"%3$@\"?".localized, recordCount, fromStr.omit(count: 12), toStr.omit(count: 12)),
+                          infomation: "This operation can be undone for each sheet, but not for all sheets at once.".localized,
+                          okTitle: "Replace".localized,
+                          isDefaultButton: true) {
                 make(isRecord: true)
             } cancelClosure: {}
         } else {
@@ -1582,11 +1638,16 @@ final class Document {
             closeLookingUp()
         }
         selections = []
+        finding = Finding()
     }
     
     private var menuNode: Node?
     
-    var textCursorWidthNode = Node(lineWidth: 2, lineType: .color(.border))
+    var isSnapScroll = false
+    
+    var textMaxTypelineWidthNode = Node(isHidden: true,
+                                        lineWidth: 0.5, lineType: .color(.border))
+    var textCursorWidthNode = Node(lineWidth: 3, lineType: .color(.border))
     var textCursorNode = Node(lineWidth: 0.5, lineType: .color(.background),
                               fillType: .color(.content))
     func updateTextCursor(isMove: Bool = false) {
@@ -1596,6 +1657,9 @@ final class Document {
             }
             if textCursorWidthNode.parent != nil {
                 textCursorWidthNode.removeFromParent()
+            }
+            if textMaxTypelineWidthNode.parent != nil {
+                textMaxTypelineWidthNode.removeFromParent()
             }
         }
         if isEditingSheet && textEditor.editingTextView == nil,
@@ -1611,6 +1675,9 @@ final class Document {
                 if let textView = sheetView.selectedTextView,
                    let i = textView.selectedRange?.lowerBound {
                     
+                    if textMaxTypelineWidthNode.parent == nil {
+                        rootNode.append(child: textMaxTypelineWidthNode)
+                    }
                     if textCursorWidthNode.parent == nil {
                         rootNode.append(child: textCursorWidthNode)
                     }
@@ -1626,8 +1693,13 @@ final class Document {
                     let path = textView.typesetter.cursorPath(at: i)
                     textCursorNode.path = textView.convertToWorld(path)
                     textCursorWidthNode.path = textCursorNode.path
+                    let mPath = textView.typesetter.maxTypelineWidthPath
+                    textMaxTypelineWidthNode.path = textView.convertToWorld(mPath)
                 } else if let (textView, _, _, cursorIndex) = sheetView.textTuple(at: vp) {
                     
+                    if textMaxTypelineWidthNode.parent == nil {
+                        rootNode.append(child: textMaxTypelineWidthNode)
+                    }
                     if textCursorWidthNode.parent == nil {
                         rootNode.append(child: textCursorWidthNode)
                     }
@@ -1652,6 +1724,8 @@ final class Document {
                         .cursorPath(at: cursorIndex,
                                     halfWidth: 0.75, heightRatio: 0.3)
                     textCursorNode.path = textView.convertToWorld(path)
+                    let mPath = textView.typesetter.maxTypelineWidthPath
+                    textMaxTypelineWidthNode.path = textView.convertToWorld(mPath)
                 } else {
                     close()
                 }
@@ -1880,10 +1954,15 @@ final class Document {
         }
     }
     
-    func updateStringRecord(at sid: SheetID, with sheetView: SheetView) {
+    func updateStringRecord(at sid: SheetID, with sheetView: SheetView,
+                            isPreparedWrite: Bool = false) {
         guard let sheetRecorder = sheetRecorders[sid] else { return }
         sheetRecorder.stringRecord.value = sheetView.model.allTextsString
-        sheetRecorder.stringRecord.isWillwrite = true
+        if isPreparedWrite {
+            sheetRecorder.stringRecord.isPreparedWrite = true
+        } else {
+            sheetRecorder.stringRecord.isWillwrite = true
+        }
     }
     
     struct ThumbnailMipmap {
@@ -1908,16 +1987,18 @@ final class Document {
             textView.isHiddenSelectedRange = false
         }
     }
-    func makeThumbnailRecord(at sid: SheetID, with sheetView: SheetView) {
+    func makeThumbnailRecord(at sid: SheetID, with sheetView: SheetView,
+                             isPreparedWrite: Bool = false) {
         hideSelectedRange {
             if let tm = thumbnailMipmap(from: sheetView),
                let sheetRecorder = sheetRecorders[sid] {
-                
-                saveThumbnailRecord(tm, in: sheetRecorder)
+                saveThumbnailRecord(tm, in: sheetRecorder,
+                                    isPreparedWrite: isPreparedWrite)
                 baseThumbnailDatas[sid] = Texture.bytesData(with: tm.thumbnail4Data)
             }
         }
-        updateStringRecord(at: sid, with: sheetView)
+        updateStringRecord(at: sid, with: sheetView,
+                           isPreparedWrite: isPreparedWrite)
     }
     func thumbnailMipmap(from sheetView: SheetView) -> ThumbnailMipmap? {
         var size = Sheet.defaultBounds.size * (2.0 ** 1)
@@ -1941,17 +2022,26 @@ final class Document {
                                thumbnail1024: thumbnail1024)
     }
     func saveThumbnailRecord(_ tm: ThumbnailMipmap,
-                             in srr: SheetRecorder) {
+                             in srr: SheetRecorder,
+                             isPreparedWrite: Bool = false) {
         srr.thumbnail4Record.value = tm.thumbnail4
         srr.thumbnail16Record.value = tm.thumbnail16
         srr.thumbnail64Record.value = tm.thumbnail64
         srr.thumbnail256Record.value = tm.thumbnail256
         srr.thumbnail1024Record.value = tm.thumbnail1024
-        srr.thumbnail4Record.isWillwrite = true
-        srr.thumbnail16Record.isWillwrite = true
-        srr.thumbnail64Record.isWillwrite = true
-        srr.thumbnail256Record.isWillwrite = true
-        srr.thumbnail1024Record.isWillwrite = true
+        if isPreparedWrite {
+            srr.thumbnail4Record.isPreparedWrite = true
+            srr.thumbnail16Record.isPreparedWrite = true
+            srr.thumbnail64Record.isPreparedWrite = true
+            srr.thumbnail256Record.isPreparedWrite = true
+            srr.thumbnail1024Record.isPreparedWrite = true
+        } else {
+            srr.thumbnail4Record.isWillwrite = true
+            srr.thumbnail16Record.isWillwrite = true
+            srr.thumbnail64Record.isWillwrite = true
+            srr.thumbnail256Record.isWillwrite = true
+            srr.thumbnail1024Record.isWillwrite = true
+        }
     }
     func emptyNode(at shp: SheetPosition) -> Node {
         let ssFrame = sheetFrame(with: shp)
@@ -1966,6 +2056,14 @@ final class Document {
         }
         return .texture(texture)
     }
+    
+//    var audioPlayer = AudioPlayer()
+//    func updateAudio() {
+//        if let sv = sheetView(at: cursorSHP),
+//           let wt = sv.waveTrack {
+//            audioPlayer.play(from: wt)
+//        }
+//    }
     
     var isUpdateWithCursorPosition = true
     var cursorPoint = Point() {
@@ -2233,7 +2331,8 @@ final class Document {
                             record.value = sheetView.model
                             historyRecord?.value = sheetView.history
                             historyRecord?.isPreparedWrite = true
-                            self?.makeThumbnailRecord(at: sid, with: sheetView)
+                            self?.makeThumbnailRecord(at: sid, with: sheetView,
+                                                      isPreparedWrite: true)
                         }
                     }
                     
@@ -2308,7 +2407,8 @@ final class Document {
                 record.value = sheetView.model
                 sheetHistoryRecord?.value = sheetView.history
                 sheetHistoryRecord?.isPreparedWrite = true
-                self?.makeThumbnailRecord(at: sid, with: sheetView)
+                self?.makeThumbnailRecord(at: sid, with: sheetView,
+                                          isPreparedWrite: true)
             }
         }
         
@@ -2436,7 +2536,8 @@ final class Document {
                 record.value = sheetView.model
                 sheetHistoryRecord?.value = sheetView.history
                 sheetHistoryRecord?.isPreparedWrite = true
-                self?.makeThumbnailRecord(at: sid, with: sheetView)
+                self?.makeThumbnailRecord(at: sid, with: sheetView,
+                                          isPreparedWrite: true)
             }
         }
         
@@ -3119,7 +3220,7 @@ final class Document {
         case .undo: return Undoer(self)
         case .redo: return Redoer(self)
         case .find:
-            return System.isVersion2 ? Finder(self) : nil
+            return System.isVersion1_1 ? Finder(self) : nil
         case .lookUp: return Looker(self)
 //        case .unselect: return Unselector(self)
         case .changeToVerticalText: return VerticalTextChanger(self)
@@ -3133,6 +3234,8 @@ final class Document {
         case .cutDraft: return DraftCutter(self)
         case .makeFaces: return FacesMaker(self)
         case .cutFaces: return FacesCutter(self)
+        case .enableSound: return SoundEnabler(self)
+        case .disableSound: return SoundDisabler(self)
         default: return nil
         }
     }

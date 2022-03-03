@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -84,12 +84,13 @@ protocol FileTypeProtocol {
 }
 
 struct FileError: Error {}
-protocol File: class {
+protocol File: AnyObject {
     var url: URL { get }
     var key: String { get }
     var parent: Directory? { get set }
     func prepareToWrite()
     func write() throws
+    func resetWrite()
 }
 extension File {
     var key: String { url.lastPathComponent }
@@ -107,7 +108,7 @@ final class Directory: File {
     }
     private(set) var children = [String: ChildType]()
     private(set) var childrenURLs: [String: URL]
-    var root: Directory { parent ?? self }
+    var root: Directory { parent?.root ?? self }
     
     var isWillwrite = false {
         didSet {
@@ -165,6 +166,16 @@ extension Directory {
             }
         }
     }
+    func resetWriteAll() {
+        for child in children.values {
+            switch child {
+            case .directory(let directory):
+                directory.resetWriteAll()
+            case .file(let file):
+                file.resetWrite()
+            }
+        }
+    }
     
     func prepareToWrite() {
         if isWillwrite {
@@ -178,6 +189,7 @@ extension Directory {
                                                 attributes: nil)
         isWillwrite = false
     }
+    func resetWrite() {}
     
     func makeRecord<T: Codable & Serializable>(forKey key: String) -> Record<T> {
         if let child = children[key] {
@@ -302,8 +314,10 @@ extension Record {
             try fm.createDirectory(at: parentURL, withIntermediateDirectories: true)
         }
         try data?.write(to: url, options: .atomic)
+        isPreparedWrite = false
+    }
+    func resetWrite() {
         value = nil
         data = nil
-        isPreparedWrite = false
     }
 }

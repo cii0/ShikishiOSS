@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -926,7 +926,10 @@ extension Sheet {
     }
     
     func draftLinesColor() -> Color {
-        Color.rgbLinear(backgroundUUColor.value, .content, t: 0.1)
+        Sheet.draftLinesColor(from: backgroundUUColor.value)
+    }
+    static func draftLinesColor(from fillColor: Color) -> Color {
+        Color.rgbLinear(fillColor, .draft, t: 0.15)
     }
     func draftPlaneColor(from color: Color, fillColor: Color) -> Color {
         Color.rgbLinear(fillColor, color, t: 0.05)
@@ -2506,6 +2509,34 @@ final class SheetView: View {
         var uuColor = baseUUColor
         uuColor.value.lightness = Double.random(in: lRanges[vs.firstIndex(of: false) ?? 0])
         return uuColor
+    }
+    
+    var soundNode: Node?
+    var isSound = false {
+        didSet {
+            if let soundNode = self.soundNode {
+                soundNode.removeFromParent()
+                self.soundNode = nil
+            }
+            if let waveTrack = waveTrack {
+                let soundNode = Node()
+                soundNode.children = waveTrack.lineNodes(bounds: model.bounds,
+                                                         from: .horizontal,
+                                                         bpm: 120)
+                node.insert(child: soundNode, at: 0)
+                self.soundNode = soundNode
+            }
+        }
+    }
+    var waveTrack: WaveTrack? {
+        guard isSound else { return nil }
+        var wt = WaveTrack()
+        wt.lineWaves = model.picture.lines.map {
+            LineWave(line: wt.waveLine(from: $0,
+                                       bounds: Sheet.defaultBounds,
+                                       orientation: .horizontal))
+        }
+        return wt
     }
     
     func capture(intRange: Range<Int>, subString: String,

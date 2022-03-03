@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -597,7 +597,9 @@ final class CopyEditor: Editor {
     var isSnapped = false {
         didSet {
             guard isSnapped != oldValue else { return }
-            Feedback.performAlignment()
+            if isSnapped {
+                Feedback.performAlignment()
+            }
         }
     }
     
@@ -707,9 +709,56 @@ final class CopyEditor: Editor {
                     np = p
                 }
                 
-                selectingLineNode.path = Path()
+                var snapDP = Point(), path: Path?
+                if let sheetView = sheetView {
+                    let np = sheetView.convertFromWorld(np)
+                    let scale = beganScale / document.worldToScreenScale
+                    let nnp = text.origin * scale + np
+                    let log10Scale: Double = .log10(document.worldToScreenScale)
+                    let clipScale = max(0.0, log10Scale)
+                    let decimalPlaces = Int(clipScale + 2)
+                    let fp1 = nnp.rounded(decimalPlaces: decimalPlaces)
+                    let lp1 = fp1 + (text.typesetter.typelines.last?.origin ?? Point())
+                    for textView in sheetView.textsView.elementViews {
+                        guard !textView.typesetter.typelines.isEmpty else { continue }
+                        let fp0 = textView.model.origin
+                            + (textView.typesetter
+                                .firstEditReturnBounds?.centerPoint
+                                ?? Point())
+                        let lp0 = textView.model.origin
+                            + (textView.typesetter
+                                .lastEditReturnBounds?.centerPoint
+                                ?? Point())
+                        
+                        if text.size.absRatio(textView.model.size) < 1.25 {
+                            let d = 5.0 * document.screenToWorldScale
+                            if fp0.distance(lp1) < d {
+                                let spacing = textView.model.typelineSpacing
+                                let edge = textView.typesetter.firstEdge(offset: spacing / 2)
+                                path = textView.convertToWorld(Path(edge))
+                                snapDP = fp0 - lp1
+                                break
+                            } else if lp0.distance(fp1) < d {
+                                let spacing = textView.model.typelineSpacing
+                                let edge = textView.typesetter.lastEdge(offset: spacing / 2)
+                                path = textView.convertToWorld(Path(edge))
+                                snapDP = lp0 - fp1
+                                break
+                            }
+                        }
+                    }
+                }
+                
+                if let path = path {
+                    selectingLineNode.fillType = .color(.subSelected)
+                    selectingLineNode.lineType = .color(.selected)
+                    selectingLineNode.path = path * Attitude(position: np + snapDP,
+                                                             scale: Size(square: 1.0 * scale)).transform.inverted()
+                } else {
+                    selectingLineNode.path = Path()
+                }
                 selectingLineNode.attitude
-                    = Attitude(position: np,
+                    = Attitude(position: np + snapDP,
                                scale: Size(square: 1.0 * scale))
                 
                 oldScale = s
@@ -1034,6 +1083,69 @@ final class CopyEditor: Editor {
                 }
                 isAppend = true
             }
+            
+            if !isAppend {
+                let np = sheetView.convertFromWorld(p)
+                let scale = beganScale / document.worldToScreenScale
+                let nnp = text.origin * scale + np
+                let log10Scale: Double = .log10(document.worldToScreenScale)
+                let clipScale = max(0.0, log10Scale)
+                let decimalPlaces = Int(clipScale + 2)
+                let fp1 = nnp.rounded(decimalPlaces: decimalPlaces)
+                let lp1 = fp1 + (text.typesetter.typelines.last?.origin ?? Point())
+                for (i, textView) in sheetView.textsView.elementViews.enumerated() {
+                    guard !textView.typesetter.typelines.isEmpty else { continue }
+                    let fp0 = textView.model.origin
+                        + (textView.typesetter
+                            .firstEditReturnBounds?.centerPoint
+                            ?? Point())
+                    let lp0 = textView.model.origin
+                        + (textView.typesetter
+                            .lastEditReturnBounds?.centerPoint
+                            ?? Point())
+                    
+                    if text.size.absRatio(textView.model.size) < 1.25 {
+                        var str = text.string
+                        let d = 5.0 * document.screenToWorldScale
+                        var dp = Point(), rRange: Range<Int>?
+                        if fp0.distance(lp1) < d {
+                            str.append("\n")
+                            let th = text.typesetter.height
+                                + text.typelineSpacing
+                            switch textView.model.orientation {
+                            case .horizontal: dp = Point(0, th)
+                            case .vertical: dp = Point(th, 0)
+                            }
+                            let si = textView.model.string
+                                .intIndex(from: textView.model.string.startIndex)
+                            rRange = si..<si
+                        } else if lp0.distance(fp1) < d {
+                            str.insert("\n", at: str.startIndex)
+                            let ei = textView.model.string
+                                .intIndex(from: textView.model.string.endIndex)
+                            rRange = ei..<ei
+                        }
+                        if let rRange = rRange {
+                            let sb = sheetView.model.bounds.inset(by: Sheet.textPadding)
+                            var nText = textView.model
+                            nText.replaceSubrange(str, from: rRange,
+                                                  clipFrame: sb)
+                            let origin = textView.model.origin != nText.origin + dp ?
+                                nText.origin + dp : nil
+                            let size = textView.model.size != nText.size ?
+                                nText.size : nil
+                            let tv = TextValue(string: str,
+                                               replacedRange: rRange,
+                                               origin: origin, size: size)
+                            updateUndoGroup(with: nshp)
+                            sheetView.replace(IndexValue(value: tv, index: i))
+                            isAppend = true
+                            break
+                        }
+                    }
+                }
+            }
+            
             if !isAppend {
                 let np = sheetView.convertFromWorld(p)
                 let scale = beganScale / document.worldToScreenScale
@@ -1106,11 +1218,18 @@ final class CopyEditor: Editor {
                         text.widthCount = widthCount
                         
                         let sb = sheetView.model.bounds.inset(by: Sheet.textPadding)
-                        if let textFrame = text.frame,
-                           !sb.contains(textFrame) {
-                           
+                        if let textFrame = text.frame, !sb.contains(textFrame) {
                             let nFrame = sb.clipped(textFrame)
                             text.origin += nFrame.origin - textFrame.origin
+                            
+                            if let textFrame = text.frame, !sb.outset(by: 1).contains(textFrame) {
+                                
+                                let scale = min(sb.width / textFrame.width,
+                                                sb.height / textFrame.height)
+                                let dp = sb.clipped(textFrame).origin - textFrame.origin
+                                text.size *= scale
+                                text.origin += dp
+                            }
                         }
                         
                         sheetView.newUndoGroup()
@@ -1189,6 +1308,7 @@ final class CopyEditor: Editor {
             cut(at: editingP)
             
             document.updateSelects()
+            document.updateFinding(at: editingP)
             document.updateTextCursor()
         case .changed:
             break
@@ -1219,7 +1339,6 @@ final class CopyEditor: Editor {
             break
         case .ended:
             selectingLineNode.removeFromParent()
-            document.updateSelects()
             
             document.cursor = Document.defaultCursor
         }
@@ -1312,6 +1431,7 @@ final class CopyEditor: Editor {
             }
             
             document.updateSelects()
+            document.updateFinding(at: editingP)
             document.updateTextCursor()
             
             document.cursor = Document.defaultCursor
@@ -1451,11 +1571,12 @@ final class CopyEditor: Editor {
                 document.newUndoGroup()
                 document.removeSheets(at: shps)
             }
+            
+            document.updateSelects()
+            document.updateFinding(at: editingP)
         case .changed:
             break
         case .ended:
-            document.updateSelects()
-            
             document.cursor = Document.defaultCursor
         }
     }
@@ -1492,8 +1613,6 @@ final class CopyEditor: Editor {
         case .ended:
             selectingLineNode.removeFromParent()
             
-            document.updateSelects()
-            
             document.cursor = Document.defaultCursor
         }
     }
@@ -1527,6 +1646,7 @@ final class CopyEditor: Editor {
             pasteSheetNode.removeFromParent()
             
             document.updateSelects()
+            document.updateFinding(at: editingP)
             
             document.cursor = Document.defaultCursor
         }

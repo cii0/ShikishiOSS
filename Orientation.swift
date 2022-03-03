@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -46,16 +46,21 @@ extension Orientation: Protobuf {
     }
 }
 
-enum LRBTOrientation {
-    enum Horizontal {
-        case leftToRight, rightToLeft
-    }
-    enum Vertical {
-        case bottomToTop, topToBottom
-    }
-    case horizontal(Horizontal), vertical(Vertical)
-}
-
 enum LRTB {
     case left, right, top, bottom
+}
+
+enum LRTBOrientation: String, Codable, Hashable {
+    case leftToRight, rightToLeft
+    case bottomToTop, topToBottom
+}
+extension LRTBOrientation {
+    var orientation: Orientation {
+        switch self {
+        case .leftToRight, .rightToLeft:
+            return .horizontal
+        case .bottomToTop, .topToBottom:
+            return .vertical
+        }
+    }
 }

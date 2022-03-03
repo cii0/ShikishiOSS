@@ -1,4 +1,4 @@
-// Copyright 2021 Cii
+// Copyright 2022 Cii
 //
 // This file is part of Shikishi.
 //
@@ -283,7 +283,10 @@ final class ColorEditor: Editor {
     var isSnappedTint = false {
         didSet {
             guard isSnappedTint != oldValue else { return }
-            Feedback.performAlignment()
+            if isSnappedTint {
+                Feedback.performAlignment()
+            }
+            colorPointNode.fillType = .color(isSnappedTint ? .selected : .content)
         }
     }
     var oldEditingTintPosition = Point()
